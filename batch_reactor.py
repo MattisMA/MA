@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.integrate import solve_ivp
-from enzyme_kinetics import kinetics
+from enzyme_kinetics_GluDH import kinetics
 
 
 class BatchReactor:
