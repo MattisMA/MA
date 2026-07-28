@@ -15,6 +15,8 @@ from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 from batch_reactor_LeuDH import BatchReactor
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 #=================================================================================================================================================================
 #Reactor Simulation
 #=================================================================================================================================================================
@@ -29,7 +31,7 @@ params = reactor.params
 LOWER = np.array([0.0001, 0.0001, 0.0001, 0.0001])
 UPPER = np.array([0.8, 0.05, 0.20, 0.20])
 
-w = np.array([1 + params["c_PPOS"] / params["c_AFS"], 1.0, 1.0, 1.0]) #weighting of initial volumes to account for the volume of AF stock solution
+w = np.array([1 + params["c_TMPS"] / params["c_ForS"], 1.0, 1.0, 1.0]) #weighting of initial volumes to account for the volume of AF stock solution
 v_ges_min = float(np.dot(w, LOWER))                                   #smallest possible total volume
 v_ges_max = 1.0                                                       #biggest possible total volume
 
@@ -37,8 +39,8 @@ v_ges_max = 1.0                                                       #biggest p
 N_INIT = 100                   #number of initial evaluations
 d = 4                          #dimensions of parameter domain
 
-weight = torch.tensor(w, dtype=torch.double)                                                                #weighting from w
-bounds = torch.stack([torch.tensor(LOWER, dtype=torch.double), torch.tensor(UPPER, dtype=torch.double),])   #boundaries for sampling
+weight = torch.tensor(w, dtype=torch.double, device=device)                                                                #weighting from w
+bounds = torch.stack([torch.tensor(LOWER, dtype=torch.double, device=device), torch.tensor(UPPER, dtype=torch.double, device=device),])   #boundaries for sampling
 inequality_constraints = [(torch.arange(d), -weight, -1.0)]                                                 #ensuring v*w<=1
 
 #Sampling: Markov chain monte carlo sampler
@@ -72,14 +74,14 @@ it = 0
 #Bayesian Optimization loop=====================================================================================================================================================
 while it < max_bo:
     #training data
-    train_x = torch.tensor(X, dtype=torch.double)
-    train_y = torch.tensor(Y, dtype=torch.double)
+    train_x = torch.tensor(X, dtype=torch.double, device=device)
+    train_y = torch.tensor(Y, dtype=torch.double, device=device)
 
     train_y_objectives = train_y[:, :3]    #STY, TON_E, TON_COF
     train_y_constraint = train_y[:, 3:4]   #X_PPO     
     
     #boundaries transformed into log10
-    bounds = torch.tensor(np.array([np.log10(LOWER), np.log10(UPPER)]),dtype=torch.double)
+    bounds = torch.tensor(np.array([np.log10(LOWER), np.log10(UPPER)]),dtype=torch.double, device=device)
 
     #combined Gaussian Process------------------------------------------------------------------------------------------------------------------------------------------------------------------
     #single GPs for objectives and constraint combined im mll
@@ -90,9 +92,9 @@ while it < max_bo:
             train_y[:, i:i+1],
             input_transform=Normalize(d=4, bounds=bounds),
             outcome_transform=Standardize(m=1),   #standardize outputs (mean 0, std 1) for numerical stability in the linear objective space
-        )    #GP for each objective/constraint
+        ).to(device)    #GP for each objective/constraint
         models.append(gp)
-    model = ModelListGP(*models)
+    model = ModelListGP(*models).to(device)    #combined GP for all objectives and constraint
     mll = SumMarginalLogLikelihood(model.likelihood, model)                                             #combined marginal likelihood of the 4 GPs
     t0 = time.perf_counter()
     fit_gpytorch_mll(mll)
@@ -113,7 +115,7 @@ while it < max_bo:
 
     #hypervolume calculation
     ref_point = [0, 0, 0] #(train_y_objectives.min(dim=0).values - 1.0).tolist() #reference point
-    hv = Hypervolume(torch.tensor(ref_point, dtype=torch.double))
+    hv = Hypervolume(torch.tensor(ref_point, dtype=torch.double, device=device))
     current_hv = hv.compute(pareto_Y_obj)                                       #current hypervolume of pareto points
     hv_history.append(float(current_hv))                                        #history for stopping criterium 1
 
@@ -140,7 +142,7 @@ while it < max_bo:
     )
     print(f"Time AF optimization: {time.perf_counter() - t0}s")
 
-    candidates = candidate.detach().numpy()
+    candidates = candidate.detach().cpu().numpy()
 
     for x_new in candidates:
         y_new = reactor.simulate(10**x_new)

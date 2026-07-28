@@ -12,7 +12,7 @@ kinetic_params = {
     #LeuDH kinetics
     "v_max2": 19.10,
     "Km_TMP": 21.98,
-    "Km_TLeu": 24.61,
+    "Ki_TLeu": 24.61,
     "Ki_TMP": 1838.0,
     "Km_NADH": 0.022,
 
@@ -24,7 +24,7 @@ kinetic_params = {
 def kinetics(y, p=kinetic_params):
     TMP, TLeu, NADH, NAD, For, E_LeuDH, E_FDH = np.maximum(y, 0.0)
 
-    #GluDH
+    #LeuDH
     r1 = E_LeuDH * TMP/(p["Km_TMP"] * (1 + TLeu/p["Ki_TLeu"]) + TMP **2/p["Ki_TMP"]) * NADH/(p["Km_NADH"] + NADH)
 
     #FDH
