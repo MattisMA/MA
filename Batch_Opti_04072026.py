@@ -18,7 +18,7 @@ from botorch.acquisition.multi_objective.objective import IdentityMCMultiOutputO
 from botorch.utils.sampling import get_polytope_samples
 from botorch.models.transforms.input import ChainedInputTransform, Log10, Normalize
 from botorch.models.transforms.outcome import Standardize
-from batch_reactor import BatchReactor
+from batch_reactor_LeuDH import BatchReactor
 
 #=================================================================================================================================================================
 #Reactor Simulation
