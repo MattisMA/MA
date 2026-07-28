@@ -1,22 +1,17 @@
 import numpy as np
 import torch
 import pandas as pd
-import matplotlib.pyplot as plt
 import time
-from scipy.interpolate import griddata
-from scipy.spatial import Delaunay
-from mpl_toolkits.mplot3d import Axes3D
 from botorch.models import SingleTaskGP, ModelListGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls.sum_marginal_log_likelihood import SumMarginalLogLikelihood
-from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.utils.multi_objective.pareto import is_non_dominated
 from botorch.optim import optimize_acqf
 from botorch.utils.multi_objective.hypervolume import Hypervolume
 from botorch.acquisition.multi_objective.logei import qLogNoisyExpectedHypervolumeImprovement
 from botorch.acquisition.multi_objective.objective import IdentityMCMultiOutputObjective
 from botorch.utils.sampling import get_polytope_samples
-from botorch.models.transforms.input import ChainedInputTransform, Log10, Normalize
+from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 from batch_reactor import BatchReactor
 
@@ -216,46 +211,4 @@ with pd.ExcelWriter("batch_pareto_0407.xlsx") as writer:
     df.to_excel(writer, sheet_name="Pareto", index=False)
     df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
 
-print("Pareto-Frontier saved in batch_pareto_0407.xlsx")
-
-#Scatter-Plot--------------------------------------------------------------------------------------------------------------------------------------------------
-ton_e   = pareto_Y[:, 1]
-ton_cof = pareto_Y[:, 2]
-sty     = pareto_Y[:, 0]
-
-fig, ax = plt.subplots(figsize=(8, 6))
-
-sc = ax.scatter(
-    ton_cof, ton_e,
-    c=sty,
-    cmap="viridis",
-    s=80,
-    edgecolors="k",
-    linewidths=0.5,
-    zorder=3,
-)
-cbar = fig.colorbar(sc, ax=ax)
-cbar.set_label("STY")
-
-ax.set_xlabel("TON$_{COF}$")
-ax.set_ylabel("TON$_{E}$")
-ax.set_title("Pareto-Frontier — color = STY")
-ax.grid(True, linestyle="--", alpha=0.4)
-
-plt.tight_layout()
-plt.savefig("pareto_front_0407.png", dpi=150)
-plt.show()
-
-#Hypervolume-Plot-----------------------------------------------------------------------------------------------------------------------
-plt.figure(figsize=(8, 6))
-plt.plot(
-    range(1, len(hv_history) + 1),
-    hv_history,
-    linewidth=1.5,
-)
-plt.xlabel("Iteration")
-plt.ylabel("Hypervolume")
-plt.grid(True, linestyle="--", alpha=0.4)
-plt.tight_layout()
-plt.savefig("hv_history_0407.png", dpi=150)
-plt.show()
+print("Pareto-Frontier saved in batch_pareto_0907.xlsx")

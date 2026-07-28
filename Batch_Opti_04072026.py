@@ -1,22 +1,17 @@
 import numpy as np
 import torch
 import pandas as pd
-import matplotlib.pyplot as plt
 import time
-from scipy.interpolate import griddata
-from scipy.spatial import Delaunay
-from mpl_toolkits.mplot3d import Axes3D
 from botorch.models import SingleTaskGP, ModelListGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls.sum_marginal_log_likelihood import SumMarginalLogLikelihood
-from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.utils.multi_objective.pareto import is_non_dominated
 from botorch.optim import optimize_acqf
 from botorch.utils.multi_objective.hypervolume import Hypervolume
 from botorch.acquisition.multi_objective.logei import qLogNoisyExpectedHypervolumeImprovement
 from botorch.acquisition.multi_objective.objective import IdentityMCMultiOutputObjective
 from botorch.utils.sampling import get_polytope_samples
-from botorch.models.transforms.input import ChainedInputTransform, Log10, Normalize
+from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 from batch_reactor import BatchReactor
 
