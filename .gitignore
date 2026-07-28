@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Confidential enzyme kinetics module (local only, never tracked)
+enzyme_kinetics.py
