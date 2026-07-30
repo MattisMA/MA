@@ -4,7 +4,7 @@ import pandas as pd
 import time
 from botorch.models import SingleTaskGP, ModelListGP
 from botorch.fit import fit_gpytorch_mll
-from gpytorch.mlls.sum_marginal_log_likelihood import SumMarginalLogLikelihood
+from gpytorch.mlls.sum_marginal_log_likelihood import ExactMarginalLogLikelihood
 from botorch.utils.multi_objective.pareto import is_non_dominated
 from botorch.optim import optimize_acqf
 from botorch.utils.multi_objective.hypervolume import Hypervolume
@@ -69,7 +69,7 @@ min_pareto_points = 50
 
 #Criterium 3:
 #maximum amount of iterations
-max_bo = 1000
+max_bo = 5000
 it = 0
 
 
@@ -123,18 +123,14 @@ while it < max_bo:
     bounds = torch.tensor(np.array([np.log10(LOWER), np.log10(UPPER)]),dtype=torch.double)
 
     #combined Gaussian Process------------------------------------------------------------------------------------------------------------------------------------------------------------------
-    #single GPs for objectives and constraint combined im mll
-    models = []
-    for i in range(4):
-        gp = SingleTaskGP(
-            train_x,
-            train_y[:, i:i+1],
-            input_transform=Normalize(d=4, bounds=bounds),
-            outcome_transform=Standardize(m=1),   #standardize outputs (mean 0, std 1) for numerical stability in the linear objective space
-        )    #GP for each objective/constraint
-        models.append(gp)
-    model = ModelListGP(*models)    #combined GP for all objectives and constraint
-    mll = SumMarginalLogLikelihood(model.likelihood, model)                                             #combined marginal likelihood of the 4 GPs
+    model = SingleTaskGP(
+        train_x,
+        train_y,
+        input_transform=Normalize(d=4, bounds=bounds),
+        outcome_transform=Standardize(m=4),
+    )
+    mll = ExactMarginalLogLikelihood(model.likelihood, model)
+
     tgp = time.perf_counter()
     fit_gpytorch_mll(mll)
     print(f"Time GP fitting:{time.perf_counter() - tgp}s")
