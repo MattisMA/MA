@@ -14,7 +14,7 @@ class BatchReactor:
             "c_NADHS":   20,
             "c_NADS":    20,
             "c_LeuDHS":  68.493,
-            "c_FDHS":  140.0,
+            "c_FDHS":  48.0,
 
             "X_PPO_target": 0.999,         #target conversion
         }
