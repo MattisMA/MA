@@ -8,7 +8,8 @@ from gpytorch.mlls.sum_marginal_log_likelihood import ExactMarginalLogLikelihood
 from botorch.utils.multi_objective.pareto import is_non_dominated
 from botorch.optim import optimize_acqf
 from botorch.utils.multi_objective.hypervolume import Hypervolume
-from botorch.acquisition.multi_objective.logei import qLogNoisyExpectedHypervolumeImprovement
+from botorch.acquisition.multi_objective.logei import qLogExpectedHypervolumeImprovement
+from botorch.utils.multi_objective.box_decompositions.non_dominated import FastNondominatedPartitioning
 from botorch.acquisition.multi_objective.objective import IdentityMCMultiOutputObjective
 from botorch.utils.sampling import get_polytope_samples
 from botorch.models.transforms.input import Normalize
@@ -23,7 +24,40 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #=================================================================================================================================================================
 reactor = BatchReactor()
 params = reactor.params
-                        
+
+#Results saving=================================================================================================================================================================
+def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
+    Y_obj = torch.tensor(Y[:, :3], dtype=torch.double)
+    Y_con = torch.tensor(Y[:, 3], dtype=torch.double)
+
+    feasible_mask = (Y_con >= params["X_PPO_target"])
+    if feasible_mask.sum() > 0:
+        mask = np.zeros(len(Y), dtype=bool)
+        feasible_idx = feasible_mask.nonzero(as_tuple=True)[0]
+        local_pareto = is_non_dominated(Y_obj[feasible_mask])
+        mask[feasible_idx[local_pareto].numpy()] = True
+    else:
+        mask = is_non_dominated(Y_obj).numpy()
+
+    pareto_X = 10 ** X[mask]
+    pareto_Y = Y[mask, :3]
+    pareto_PPO_final = np.array(reactor.ppo_final_history)[mask].reshape(-1, 1)
+
+    col_x = ["PPO [mL/mL]", "NAD [mL/mL]", "E_GDH [mL/mL]", "E_FDH [mL/mL]", "PPO_final [mM]"]
+    col_y = ["STY", "TON_E", "TON_COF"]
+    df = pd.DataFrame(np.hstack([pareto_X, pareto_PPO_final, pareto_Y]), columns=col_x + col_y)
+
+    df_hv = pd.DataFrame({
+        "Iteration": range(1, len(hv_history) + 1),
+        "Hypervolume": hv_history,
+        "Duration [s]": t_iter,
+    })
+
+    with pd.ExcelWriter(filename) as writer:
+        df.to_excel(writer, sheet_name="Pareto", index=False)
+        df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
+
+
 #=======================================================================================================================================
 #Optimization
 #=======================================================================================================================================
@@ -71,43 +105,10 @@ min_pareto_points = 50
 #maximum amount of iterations
 max_bo = 5000
 it = 0
-
-
-#Results saving=================================================================================================================================================================
-def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
-    Y_obj = torch.tensor(Y[:, :3], dtype=torch.double)
-    Y_con = torch.tensor(Y[:, 3], dtype=torch.double)
-
-    feasible_mask = (Y_con >= params["X_PPO_target"])
-    if feasible_mask.sum() > 0:
-        mask = np.zeros(len(Y), dtype=bool)
-        feasible_idx = feasible_mask.nonzero(as_tuple=True)[0]
-        local_pareto = is_non_dominated(Y_obj[feasible_mask])
-        mask[feasible_idx[local_pareto].numpy()] = True
-    else:
-        mask = is_non_dominated(Y_obj).numpy()
-
-    pareto_X = 10 ** X[mask]
-    pareto_Y = Y[mask, :3]
-    pareto_PPO_final = np.array(reactor.ppo_final_history)[mask].reshape(-1, 1)
-
-    col_x = ["PPO [mL/mL]", "NAD [mL/mL]", "E_GDH [mL/mL]", "E_FDH [mL/mL]", "PPO_final [mM]"]
-    col_y = ["STY", "TON_E", "TON_COF"]
-    df = pd.DataFrame(np.hstack([pareto_X, pareto_PPO_final, pareto_Y]), columns=col_x + col_y)
-
-    df_hv = pd.DataFrame({
-        "Iteration": range(1, len(hv_history) + 1),
-        "Hypervolume": hv_history,
-        "Duration [s]": t_iter,
-    })
-
-    with pd.ExcelWriter(filename) as writer:
-        df.to_excel(writer, sheet_name="Pareto", index=False)
-        df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
-
+t_iter = []
 
 #Bayesian Optimization loop=====================================================================================================================================================
-t_iter = []
+
 while it < max_bo:
     torch.cuda.synchronize()
     t0 = time.perf_counter()
@@ -157,25 +158,29 @@ while it < max_bo:
     #GP model transformed to GPU for AF-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
     model_gpu = model.to(device)
     bounds_gpu = bounds.to(device)
-    X_baseline_gpu = train_x[feasible_mask].to(device)
 
     #Acquisition function-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     constraints = [lambda Z: params["X_PPO_target"] - Z[..., 3]]                                                    #conversion constraint: X_PPO_target - X_PPO <=0
 
-    #qNEHVI
-    qnehvi = qLogNoisyExpectedHypervolumeImprovement(
+    #qEHVI
+    tehvi = time.perf_counter()
+    partitioning = FastNondominatedPartitioning(
+        ref_point=torch.tensor(ref_point, dtype=torch.double, device=device),
+        Y=pareto_Y_obj.to(device),
+    )
+    qehvi = qLogExpectedHypervolumeImprovement(
         model=model_gpu,
         ref_point=ref_point,
-        X_baseline=X_baseline_gpu,
-        prune_baseline=True,
+        partitioning=partitioning,
         constraints=constraints,
         objective=IdentityMCMultiOutputObjective(outcomes=[0, 1, 2]),
     )
+    print(f"Time qEHVI construction (incl. pruning): {time.perf_counter() - tehvi}s")
 
     torch.cuda.synchronize()
     taf = time.perf_counter()
     candidate, _ = optimize_acqf(
-        acq_function=qnehvi,
+        acq_function=qehvi,
         bounds=bounds_gpu,      #parameter boundaries
         q=1,                #number of points suggested by the acquisition function
         num_restarts=10,    #number of optimization starting points
@@ -226,43 +231,3 @@ while it < max_bo:
     print(f"Pareto-Punkte: {n_pareto}")
     print("=====================================================================================")
     it += 1
-
-# #====================================================================================================================================================================================================
-# #Results
-# #====================================================================================================================================================================================================
-
-# #Feasible Pareto front (only points meeting the conversion constraint X_PPO >= target)------------------------------
-# Y_obj = torch.tensor(Y[:, :3], dtype=torch.double)     #objectives (STY, TON_E, TON_COF)
-# Y_con = torch.tensor(Y[:, 3], dtype=torch.double)      #constraint (X_PPO)
-
-# feasible_mask = (Y_con >= params["X_PPO_target"])
-# if feasible_mask.sum() > 0:
-#     mask = np.zeros(len(Y), dtype=bool)
-#     feasible_idx = feasible_mask.nonzero(as_tuple=True)[0]
-#     local_pareto = is_non_dominated(Y_obj[feasible_mask])
-#     mask[feasible_idx[local_pareto].numpy()] = True
-# else:
-#     mask = is_non_dominated(Y_obj).numpy()
-
-# pareto_X = 10 ** X[mask]                                            #starting volumes
-# pareto_Y = Y[mask, :3]                                              #objective function values
-# pareto_PPO_final = np.array(reactor.ppo_final_history)[mask].reshape(-1, 1) #final PPO concentration
-
-# #Excel------------------------------------------------------------------------------------------------------------------------------------------------
-# col_x = ["PPO [mL/mL]", "NAD [mL/mL]", "E_GDH [mL/mL]", "E_FDH [mL/mL]", "PPO_final [mM]"]
-# col_y = ["STY", "TON_E", "TON_COF"]
-
-# df = pd.DataFrame(np.hstack([pareto_X, pareto_PPO_final, pareto_Y]), columns=col_x + col_y,)
-
-# #Hypervolume
-# df_hv = pd.DataFrame({
-#     "Iteration": range(1, len(hv_history) + 1),
-#     "Hypervolume": hv_history,
-#     "Duration [s]": t_iter,
-# })
-
-# with pd.ExcelWriter("batch_pareto_0407.xlsx") as writer:
-#     df.to_excel(writer, sheet_name="Pareto", index=False)
-#     df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
-
-# print("Pareto-Frontier saved in batch_pareto_0407.xlsx")
