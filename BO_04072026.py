@@ -94,8 +94,8 @@ Y = np.array([reactor.simulate(row) for row in X_real])     #objective values fo
 # #Criterium 1:
 #if the hypervolume for hv_window iterations doesnt improve by at least hv_tol*100 % 
 hv_history = []
-hv_tol = 0.000005
-hv_window = 50
+hv_tol = 0.0001
+hv_window = 100
 
 #Criterium 2:
 #if there are min_pareto_points points on the determined pareto frontier
@@ -175,7 +175,7 @@ while it < max_bo:
         constraints=constraints,
         objective=IdentityMCMultiOutputObjective(outcomes=[0, 1, 2]),
     )
-    print(f"Time qEHVI construction (incl. pruning): {time.perf_counter() - tehvi}s")
+    print(f"Time qEHVI construction: {time.perf_counter() - tehvi}s")
 
     torch.cuda.synchronize()
     taf = time.perf_counter()
@@ -206,10 +206,10 @@ while it < max_bo:
         hv_old_20 = hv_history[-hv_window-1]    #hyperolume hv_window iterations ago
         hv_new = hv_history[-1]                 #current hypervolume
 
-        rel_improvement_1 = (hv_new - hv_old_1) / abs(hv_old_1)
-        rel_improvement_20 = (hv_new - hv_old_20) / abs(hv_old_20) #relative improvement of hypervolume
+        rel_improvement_1 = (hv_new - hv_old_1) / abs(hv_old_1)     #relative improvement of hypervolume since last iteration
+        rel_improvement_20 = ((hv_new - hv_old_20) / abs(hv_old_20))/hv_window  #median relative improvement of hypervolume over hv_window iterations
 
-        print(f"HV improvement over {hv_window} iterations: {100*rel_improvement_20:.10f}%")
+        print(f"Median HV improvement over {hv_window} iterations: {100*rel_improvement_20:.10f}%")
         print(f"HV improvement since last iteration: {100*rel_improvement_1:.10f}%")
 
         if rel_improvement_20 < hv_tol and n_pareto >= min_pareto_points:
