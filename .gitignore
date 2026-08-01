@@ -219,3 +219,8 @@ __marimo__/
 
 # Confidential enzyme kinetics module (local only, never tracked)
 enzyme_kinetics_GluDH.py
+
+# Excel and npz result sheets
+.xlsx
+.xls
+.npz
