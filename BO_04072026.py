@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import pandas as pd
 import time
+import os
 from botorch.models import SingleTaskGP, ModelListGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls.sum_marginal_log_likelihood import ExactMarginalLogLikelihood
@@ -25,6 +26,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 reactor = BatchReactor()
 params = reactor.params
 
+#=======================================================================================================================================
+#Optimization
+#=======================================================================================================================================
 #Results saving=================================================================================================================================================================
 def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
     Y_obj = torch.tensor(Y[:, :3], dtype=torch.double)
@@ -57,10 +61,31 @@ def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
         df.to_excel(writer, sheet_name="Pareto", index=False)
         df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
 
+#State of the loop ssaving==========================================================================================================================
+STATE_FILE = "bo_state_checkpoint.npz"
 
-#=======================================================================================================================================
-#Optimization
-#=======================================================================================================================================
+def save_state(X, Y, hv_history, t_iter, reactor, it, filename=STATE_FILE, max_retries=5, retry_delay=1.0):
+    base, ext = os.path.splitext(filename)
+    tmp_filename = f"{base}.tmp{ext}"
+    np.savez(
+        tmp_filename,
+        X=X,
+        Y=Y,
+        hv_history=np.array(hv_history),
+        t_iter=np.array(t_iter),
+        ppo_final_history=np.array(reactor.ppo_final_history),
+        it=it,
+    )
+    for attempt in range(max_retries):
+        try:
+            os.replace(tmp_filename, filename)
+            return
+        except PermissionError:
+            if attempt == max_retries - 1:
+                print(f"Warning: {filename} could not be updated after {max_retries} attempts, skipping this checkpoint.")
+                return
+            time.sleep(retry_delay)
+
 
 #boundaries of the parameter domain in v/v (PPO, NAD, GluDH, FDH)=======================================================================
 LOWER = np.array([0.0001, 0.0005, 0.0001, 0.0001])
@@ -70,7 +95,7 @@ w = np.array([1 + params["c_TMPS"] / params["c_ForS"], 1.0, 1.0, 1.0]) #weightin
 v_ges_min = float(np.dot(w, LOWER))                                   #smallest possible total volume
 v_ges_max = 1.0                                                       #biggest possible total volume
 
-#Initial design==========================================================================================================================
+#Initial design or start with old data==========================================================================================================================
 N_INIT = 100                   #number of initial evaluations
 d = 4                          #dimensions of parameter domain
 
@@ -78,24 +103,39 @@ weight = torch.tensor(w, dtype=torch.double)                                    
 bounds = torch.stack([torch.tensor(LOWER, dtype=torch.double), torch.tensor(UPPER, dtype=torch.double),])   #boundaries for sampling
 inequality_constraints = [(torch.arange(d), -weight, -1.0)]                                                 #ensuring v*w<=1
 
-#Sampling: Markov chain monte carlo sampler
-X_real = get_polytope_samples(
-    n=N_INIT,
-    bounds=bounds,
-    inequality_constraints=inequality_constraints,
-    n_burnin=10000,                                 #first 10000 points are discarded, so they are not affected by the starting point
-    n_thinning=32,                                  #sampling only every 32nd point
-).numpy()
+STATE_FILE = "bo_state_checkpoint.npz"
 
-X = np.log10(X_real)                                #log10 of sampling parameters
-Y = np.array([reactor.simulate(row) for row in X_real])     #objective values for X_real
+if os.path.exists(STATE_FILE):
+    data = np.load(STATE_FILE)
+    X = data["X"]
+    Y = data["Y"]
+    hv_history = data["hv_history"].tolist()
+    t_iter = data["t_iter"].tolist()
+    reactor.ppo_final_history = data["ppo_final_history"].tolist()
+    it = int(data["it"])
+    print(f"Resuming from checkpoint at iteration {it}")
+else:
+    X_real = get_polytope_samples(
+        n=N_INIT,
+        bounds=bounds,
+        inequality_constraints=inequality_constraints,
+        n_burnin=10000,
+        n_thinning=32,
+    ).numpy()
+    X = np.log10(X_real)
+    Y = np.array([reactor.simulate(row) for row in X_real])
+    hv_history = []
+    t_iter = []
+    it = 0
+
+print(len(X), len(Y), len(hv_history), len(reactor.ppo_final_history))
 
 #Termination criteria=================================================================================================================================
 # #Criterium 1:
 #if the hypervolume for hv_window iterations doesnt improve by at least hv_tol*100 % 
 hv_history = []
-hv_tol = 0.0001
-hv_window = 100
+hv_tol = 0.00001
+hv_window = 200
 
 #Criterium 2:
 #if there are min_pareto_points points on the determined pareto frontier
@@ -104,11 +144,10 @@ min_pareto_points = 50
 #Criterium 3:
 #maximum amount of iterations
 max_bo = 5000
-it = 0
 t_iter = []
 
 #Bayesian Optimization loop=====================================================================================================================================================
-
+prev_state = None
 while it < max_bo:
     torch.cuda.synchronize()
     t0 = time.perf_counter()
@@ -132,9 +171,16 @@ while it < max_bo:
     )
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
 
+    if prev_state is not None:
+        hypers = {k: v for k, v in prev_state.items()
+                if "outcome_transform" not in k and "input_transform" not in k}
+        model.load_state_dict(hypers, strict=False)
+
     tgp = time.perf_counter()
     fit_gpytorch_mll(mll)
     print(f"Time GP fitting:{time.perf_counter() - tgp}s")
+
+    prev_state = model.state_dict()
 
     #ensuring conversion constraint while determining points of pareto frontier
     feasible_mask = (train_y_constraint[:, 0] >= params["X_PPO_target"])
@@ -216,14 +262,18 @@ while it < max_bo:
             print(
                 "Stopping criterion reached."
             )
+            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "batch_pareto_0407_cpugpu_checkpoint.xlsx")
             break
 
     torch.cuda.synchronize()
     t_iter.append(time.perf_counter() - t0)
 
     checkpoint_interval = 10   #save every __ iterations
+
     if (it + 1) % checkpoint_interval == 0:
         save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "batch_pareto_0407_cpugpu_checkpoint.xlsx")
+        save_state(X, Y, hv_history, t_iter, reactor, it + 1)
+
 
 
     print(f"Time Iteration: {time.perf_counter() - t0}s")
