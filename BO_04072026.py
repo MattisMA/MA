@@ -106,13 +106,13 @@ inequality_constraints = [(torch.arange(d), -weight, -1.0)]                     
 STATE_FILE = "bo_state_checkpoint.npz"
 
 if os.path.exists(STATE_FILE):
-    data = np.load(STATE_FILE)
-    X = data["X"]
-    Y = data["Y"]
-    hv_history = data["hv_history"].tolist()
-    t_iter = data["t_iter"].tolist()
-    reactor.ppo_final_history = data["ppo_final_history"].tolist()
-    it = int(data["it"])
+    with np.load(STATE_FILE) as data:
+        X = data["X"]
+        Y = data["Y"]
+        hv_history = data["hv_history"].tolist()
+        t_iter = data["t_iter"].tolist()
+        reactor.ppo_final_history = data["ppo_final_history"].tolist()
+        it = int(data["it"])
     print(f"Resuming from checkpoint at iteration {it}")
 else:
     X_real = get_polytope_samples(
@@ -129,6 +129,7 @@ else:
     it = 0
 
 print(len(X), len(Y), len(hv_history), len(reactor.ppo_final_history))
+X_PPO_TARGET_WARPED = -np.log(1 - params["X_PPO_target"])   #fixed warped conversion constraint for the GP model
 
 #Termination criteria=================================================================================================================================
 # #Criterium 1:
@@ -156,8 +157,13 @@ while it < max_bo:
     train_x = torch.tensor(X, dtype=torch.double)
     train_y = torch.tensor(Y, dtype=torch.double)
 
+    #warping the conversion constraint to ensure that the GP model can handle the constraint properly
+    g_warped = -torch.log(1 - train_y[:, 3])
+    train_y = torch.cat([train_y[:, :3], g_warped.unsqueeze(-1)], dim=-1)
+
     train_y_objectives = train_y[:, :3]    #STY, TON_E, TON_COF
-    train_y_constraint = train_y[:, 3:4]   #X_PPO     
+    train_y_constraint = train_y[:, 3:4]   #g = -log(1 - X_PPO)
+        
     
     #boundaries transformed into log10
     bounds = torch.tensor(np.array([np.log10(LOWER), np.log10(UPPER)]),dtype=torch.double)
@@ -183,7 +189,8 @@ while it < max_bo:
     prev_state = model.state_dict()
 
     #ensuring conversion constraint while determining points of pareto frontier
-    feasible_mask = (train_y_constraint[:, 0] >= params["X_PPO_target"])
+    feasible_mask = (train_y_constraint[:, 0] >= X_PPO_TARGET_WARPED)
+
     if feasible_mask.sum() > 0:
         pareto_mask_full = torch.zeros(len(train_y), dtype=torch.bool)
         feasible_idx = feasible_mask.nonzero(as_tuple=True)[0]
@@ -206,7 +213,7 @@ while it < max_bo:
     bounds_gpu = bounds.to(device)
 
     #Acquisition function-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-    constraints = [lambda Z: params["X_PPO_target"] - Z[..., 3]]                                                    #conversion constraint: X_PPO_target - X_PPO <=0
+    constraints = [lambda Z: X_PPO_TARGET_WARPED - Z[..., 3]]                                                    #conversion constraint: X_PPO_target - X_PPO <=0
 
     #qEHVI
     tehvi = time.perf_counter()
@@ -230,7 +237,7 @@ while it < max_bo:
         bounds=bounds_gpu,      #parameter boundaries
         q=1,                #number of points suggested by the acquisition function
         num_restarts=10,    #number of optimization starting points
-        raw_samples=128,    #number of evaluations of the acquisition function to choose num_restarts from
+        raw_samples=512,    #number of evaluations of the acquisition function to choose num_restarts from
         gen_candidates=gen_candidates_torch,
         options={"maxiter": 200},
     )
@@ -263,6 +270,7 @@ while it < max_bo:
                 "Stopping criterion reached."
             )
             save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "batch_pareto_0407_cpugpu_checkpoint.xlsx")
+            save_state(X, Y, hv_history, t_iter, reactor, it + 1)
             break
 
     torch.cuda.synchronize()
