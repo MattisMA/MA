@@ -221,6 +221,6 @@ __marimo__/
 enzyme_kinetics_GluDH.py
 
 # Excel and npz result sheets
-.xlsx
-.xls
-.npz
+*.xlsx
+*.xls
+*.npz
