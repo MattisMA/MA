@@ -13,6 +13,7 @@ from botorch.acquisition.multi_objective.logei import qLogExpectedHypervolumeImp
 from botorch.utils.multi_objective.box_decompositions.non_dominated import FastNondominatedPartitioning
 from botorch.acquisition.multi_objective.objective import IdentityMCMultiOutputObjective
 from botorch.utils.sampling import get_polytope_samples
+from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 from botorch import gen_candidates_torch
@@ -89,7 +90,7 @@ def save_state(X, Y, hv_history, t_iter, reactor, it, filename=STATE_FILE, max_r
 
 #boundaries of the parameter domain in v/v (PPO, NAD, GluDH, FDH)=======================================================================
 LOWER = np.array([0.0001, 0.0005, 0.0001, 0.0001])
-UPPER = np.array([0.8, 0.05, 0.20, 0.20])
+UPPER = np.array([0.95, 0.05, 0.20, 0.20])
 
 w = np.array([1 + params["c_TMPS"] / params["c_ForS"], 1.0, 1.0, 1.0]) #weighting of initial volumes to account for the volume of AF stock solution
 v_ges_min = float(np.dot(w, LOWER))                                   #smallest possible total volume
@@ -135,7 +136,7 @@ X_PPO_TARGET_WARPED = -np.log(1 - params["X_PPO_target"])   #fixed warped conver
 # #Criterium 1:
 #if the hypervolume for hv_window iterations doesnt improve by at least hv_tol*100 % 
 hv_history = []
-hv_tol = 0.00001
+hv_tol = 0.0001
 hv_window = 200
 
 #Criterium 2:
@@ -203,7 +204,7 @@ while it < max_bo:
     n_pareto = int(pareto_mask_full.sum())
 
     #hypervolume calculation
-    ref_point = [0, 0, 0] #(train_y_objectives.min(dim=0).values - 1.0).tolist() #reference point
+    ref_point = [5, 10, 500] #(train_y_objectives.min(dim=0).values - 1.0).tolist() #reference point
     hv = Hypervolume(torch.tensor(ref_point, dtype=torch.double))
     current_hv = hv.compute(pareto_Y_obj)                                       #current hypervolume of pareto points
     hv_history.append(float(current_hv))                                        #history for stopping criterium 1
@@ -224,6 +225,7 @@ while it < max_bo:
     qehvi = qLogExpectedHypervolumeImprovement(
         model=model_gpu,
         ref_point=ref_point,
+        sampler=SobolQMCNormalSampler(sample_shape=torch.Size([64])),
         partitioning=partitioning,
         constraints=constraints,
         objective=IdentityMCMultiOutputObjective(outcomes=[0, 1, 2]),
@@ -276,7 +278,7 @@ while it < max_bo:
     torch.cuda.synchronize()
     t_iter.append(time.perf_counter() - t0)
 
-    checkpoint_interval = 10   #save every __ iterations
+    checkpoint_interval = 5   #save every __ iterations
 
     if (it + 1) % checkpoint_interval == 0:
         save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "batch_pareto_0407_cpugpu_checkpoint.xlsx")
