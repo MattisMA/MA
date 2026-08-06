@@ -135,7 +135,6 @@ X_PPO_TARGET_WARPED = -np.log(1 - params["X_PPO_target"])   #fixed warped conver
 #Termination criteria=================================================================================================================================
 # #Criterium 1:
 #if the hypervolume for hv_window iterations doesnt improve by at least hv_tol*100 % 
-hv_history = []
 hv_tol = 0.0001
 hv_window = 200
 
@@ -146,7 +145,6 @@ min_pareto_points = 50
 #Criterium 3:
 #maximum amount of iterations
 max_bo = 5000
-t_iter = []
 
 #Bayesian Optimization loop=====================================================================================================================================================
 prev_state = None
@@ -204,7 +202,7 @@ while it < max_bo:
     n_pareto = int(pareto_mask_full.sum())
 
     #hypervolume calculation
-    ref_point = [5, 10, 500] #(train_y_objectives.min(dim=0).values - 1.0).tolist() #reference point
+    ref_point = [20, 0, 0] #(train_y_objectives.min(dim=0).values - 1.0).tolist() #reference point
     hv = Hypervolume(torch.tensor(ref_point, dtype=torch.double))
     current_hv = hv.compute(pareto_Y_obj)                                       #current hypervolume of pareto points
     hv_history.append(float(current_hv))                                        #history for stopping criterium 1

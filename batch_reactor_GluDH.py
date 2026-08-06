@@ -65,7 +65,7 @@ class BatchReactor:
 
         sol = solve_ivp(
             fun=self.balances,
-            t_span=(0.0, 1e6),
+            t_span=(0.0, 72000.0), #max reaction time of 20h
             y0=y0,
             method="BDF",
             events=event_X99,
