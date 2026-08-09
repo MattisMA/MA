@@ -16,6 +16,7 @@ from botorch.utils.sampling import get_polytope_samples
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
+from botorch.utils.multi_objective.hypervolume import infer_reference_point
 from botorch import gen_candidates_torch
 from batch_reactor_LeuDH import BatchReactor
 
@@ -135,6 +136,7 @@ X_PPO_TARGET_WARPED = -np.log(1 - params["X_PPO_target"])   #fixed warped conver
 #Termination criteria=================================================================================================================================
 # #Criterium 1:
 #if the hypervolume for hv_window iterations doesnt improve by at least hv_tol*100 % 
+ref_point_hv = torch.tensor([0.0, 0.0, 0.0], dtype=torch.double)
 hv_tol = 0.0001
 hv_window = 200
 
@@ -202,8 +204,8 @@ while it < max_bo:
     n_pareto = int(pareto_mask_full.sum())
 
     #hypervolume calculation
-    ref_point = [20, 0, 0] #(train_y_objectives.min(dim=0).values - 1.0).tolist() #reference point
-    hv = Hypervolume(torch.tensor(ref_point, dtype=torch.double))
+    ref_point_acq = infer_reference_point(pareto_Y_obj).to(device)
+    hv = Hypervolume(ref_point_hv)
     current_hv = hv.compute(pareto_Y_obj)                                       #current hypervolume of pareto points
     hv_history.append(float(current_hv))                                        #history for stopping criterium 1
 
@@ -217,12 +219,12 @@ while it < max_bo:
     #qEHVI
     tehvi = time.perf_counter()
     partitioning = FastNondominatedPartitioning(
-        ref_point=torch.tensor(ref_point, dtype=torch.double, device=device),
+        ref_point=ref_point_acq,
         Y=pareto_Y_obj.to(device),
     )
     qehvi = qLogExpectedHypervolumeImprovement(
         model=model_gpu,
-        ref_point=ref_point,
+        ref_point=ref_point_acq,
         sampler=SobolQMCNormalSampler(sample_shape=torch.Size([64])),
         partitioning=partitioning,
         constraints=constraints,
@@ -252,6 +254,9 @@ while it < max_bo:
         X = np.vstack([X, x_new])
         Y = np.vstack([Y, y_new])
 
+    torch.cuda.synchronize()
+    t_iter.append(time.perf_counter() - t0)
+
     #Termination criteria---------------------------------------------------------------------------------------------------------------------------------------
     if len(hv_history) > hv_window:
         
@@ -272,9 +277,6 @@ while it < max_bo:
             save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "batch_pareto_0407_cpugpu_checkpoint.xlsx")
             save_state(X, Y, hv_history, t_iter, reactor, it + 1)
             break
-
-    torch.cuda.synchronize()
-    t_iter.append(time.perf_counter() - t0)
 
     checkpoint_interval = 5   #save every __ iterations
 
