@@ -16,7 +16,8 @@ class BatchReactor:
             "c_LeuDHS":  68.493,
             "c_FDHS":  48.0,
 
-            "X_PPO_target": 0.999,         #target conversion
+            "X_target": 0.999,         #target conversion
+            "T_max": 1200.0,               #max reaction time [min]
         }
         self.ppo_final_history = []
 
@@ -59,24 +60,30 @@ class BatchReactor:
 
         #event: target conversion is reached
         def event_X99(t, y):
-            return y[0] - y0[0] * (1 - p["X_PPO_target"])
-        event_X99.terminal = True
+            return y[0] - y0[0] * (1 - p["X_target"])
+        event_X99.terminal = False
         event_X99.direction = -1
 
         sol = solve_ivp(
             fun=self.balances,
-            t_span=(0.0, 1200.0), #max reaction time of 20h
+            t_span=(0.0, p["T_max"]),
             y0=y0,
             method="BDF",
             events=event_X99,
+            dense_output=True,
             rtol=1e-8,
             atol=1e-10,
         )
 
-        #solving for reaction time and final TMP and TLeu concentrations
-        tf = sol.t[-1]
-        TMP = sol.y[0, -1]
-        TLeu = sol.y[1, -1]
+        #solving for reaction time and TMP and TLeu concentrations when X_target is reached
+        hit = sol.t_events[0].size > 0
+        tf  = float(sol.t_events[0][0]) if hit else sol.t[-1]
+        y_f = sol.sol(tf) if hit else sol.y[:, -1]
+        TMP = y_f[0]
+        TLeu = y_f[1]
+
+        #final TMP concentration after T_max
+        TMP_final = sol.y[0, -1]
 
         self.ppo_final_history.append(TMP)
 
@@ -85,7 +92,7 @@ class BatchReactor:
         ton_e   = TLeu / (LeuDH + FDH)
         ton_cof = TLeu / (c_NADH0 + c_NAD0)
 
-        #for constraint
-        X_TMP = 1.0 - TMP / c_TMP0
+        #for constraint: X_TMP after T_max
+        X_TMP = 1.0 - TMP_final/c_TMP0
 
         return np.array([sty, ton_e, ton_cof, X_TMP])

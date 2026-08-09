@@ -36,7 +36,7 @@ def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
     Y_obj = torch.tensor(Y[:, :3], dtype=torch.double)
     Y_con = torch.tensor(Y[:, 3], dtype=torch.double)
 
-    feasible_mask = (Y_con >= params["X_PPO_target"])
+    feasible_mask = (Y_con >= params["X_target"])
     if feasible_mask.sum() > 0:
         mask = np.zeros(len(Y), dtype=bool)
         feasible_idx = feasible_mask.nonzero(as_tuple=True)[0]
@@ -131,7 +131,7 @@ else:
     it = 0
 
 print(len(X), len(Y), len(hv_history), len(reactor.ppo_final_history))
-X_PPO_TARGET_WARPED = -np.log(1 - params["X_PPO_target"])   #fixed warped conversion constraint for the GP model
+X_TARGET_WARPED = -np.log(1 - params["X_target"])   #fixed warped conversion constraint for the GP model
 
 #Termination criteria=================================================================================================================================
 # #Criterium 1:
@@ -190,7 +190,7 @@ while it < max_bo:
     prev_state = model.state_dict()
 
     #ensuring conversion constraint while determining points of pareto frontier
-    feasible_mask = (train_y_constraint[:, 0] >= X_PPO_TARGET_WARPED)
+    feasible_mask = (train_y_constraint[:, 0] >= X_TARGET_WARPED)
 
     if feasible_mask.sum() > 0:
         pareto_mask_full = torch.zeros(len(train_y), dtype=torch.bool)
@@ -214,7 +214,7 @@ while it < max_bo:
     bounds_gpu = bounds.to(device)
 
     #Acquisition function-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-    constraints = [lambda Z: X_PPO_TARGET_WARPED - Z[..., 3]]                                                    #conversion constraint: X_PPO_target - X_PPO <=0
+    constraints = [lambda Z: X_TARGET_WARPED - Z[..., 3]]                                                    #conversion constraint: X_target - X <=0
 
     #qEHVI
     tehvi = time.perf_counter()
