@@ -19,9 +19,10 @@ from botorch.models.transforms.outcome import Standardize
 from botorch.utils.multi_objective.hypervolume import infer_reference_point
 from botorch import gen_candidates_torch
 from batch_reactor_LeuDH import BatchReactor
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+"""To optimize another reactor these things have to be changed: reactor import (line21), name in save_checkpoint (line68), name in excel save (line269+276)))"""
 #=================================================================================================================================================================
 #Reactor Simulation
 #=================================================================================================================================================================
@@ -49,7 +50,7 @@ def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
     pareto_Y = Y[mask, :3]
     pareto_PPO_final = np.array(reactor.ppo_final_history)[mask].reshape(-1, 1)
 
-    col_x = ["PPO [mL/mL]", "NAD [mL/mL]", "E_GDH [mL/mL]", "E_FDH [mL/mL]", "PPO_final [mM]"]
+    col_x = list(reactor.v_names) + ["PPO_final [mM]"]
     col_y = ["STY", "TON_E", "TON_COF"]
     df = pd.DataFrame(np.hstack([pareto_X, pareto_PPO_final, pareto_Y]), columns=col_x + col_y)
 
@@ -64,20 +65,13 @@ def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
         df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
 
 #State of the loop ssaving==========================================================================================================================
-STATE_FILE = "bo_state_checkpoint.npz"
+STATE_FILE = "batch_LeuDH_paretofront_1108.npz"
 
 def save_state(X, Y, hv_history, t_iter, reactor, it, filename=STATE_FILE, max_retries=5, retry_delay=1.0):
     base, ext = os.path.splitext(filename)
     tmp_filename = f"{base}.tmp{ext}"
-    np.savez(
-        tmp_filename,
-        X=X,
-        Y=Y,
-        hv_history=np.array(hv_history),
-        t_iter=np.array(t_iter),
-        ppo_final_history=np.array(reactor.ppo_final_history),
-        it=it,
-    )
+    np.savez(tmp_filename, X=X, Y=Y, hv_history=np.array(hv_history), t_iter=np.array(t_iter), ppo_final_history=np.array(reactor.ppo_final_history), it=it)
+
     for attempt in range(max_retries):
         try:
             os.replace(tmp_filename, filename)
@@ -90,22 +84,20 @@ def save_state(X, Y, hv_history, t_iter, reactor, it, filename=STATE_FILE, max_r
 
 
 #boundaries of the parameter domain in v/v (PPO, NAD, GluDH, FDH)=======================================================================
-LOWER = np.array([0.0001, 0.0005, 0.0001, 0.0001])
-UPPER = np.array([0.95, 0.05, 0.20, 0.20])
+LOWER = np.asarray(reactor.LOWER, dtype=float)
+UPPER = np.asarray(reactor.UPPER, dtype=float)
 
-w = np.array([1 + params["c_TMPS"] / params["c_ForS"], 1.0, 1.0, 1.0]) #weighting of initial volumes to account for the volume of AF stock solution
-v_ges_min = float(np.dot(w, LOWER))                                   #smallest possible total volume
-v_ges_max = 1.0                                                       #biggest possible total volume
+w =np.asarray(reactor.weights, dtype=float) #weighting of initial volumes to account for the volume of AF stock solution
 
 #Initial design or start with old data==========================================================================================================================
-N_INIT = 100                   #number of initial evaluations
-d = 4                          #dimensions of parameter domain
+N_INIT = 50                   #number of initial evaluations
+d = len(LOWER)                 #dimensions of parameter domain
 
-weight = torch.tensor(w, dtype=torch.double)                                                                #weighting from w
 bounds = torch.stack([torch.tensor(LOWER, dtype=torch.double), torch.tensor(UPPER, dtype=torch.double),])   #boundaries for sampling
-inequality_constraints = [(torch.arange(d), -weight, -1.0)]                                                 #ensuring v*w<=1
 
-STATE_FILE = "bo_state_checkpoint.npz"
+vol_idx = np.nonzero(w)[0]
+inequality_constraints = [(torch.tensor(vol_idx, dtype=torch.long),-torch.tensor(w[vol_idx], dtype=torch.double),-1.0)]
+
 
 if os.path.exists(STATE_FILE):
     with np.load(STATE_FILE) as data:
@@ -137,7 +129,7 @@ X_TARGET_WARPED = -np.log(1 - params["X_target"])   #fixed warped conversion con
 # #Criterium 1:
 #if the hypervolume for hv_window iterations doesnt improve by at least hv_tol*100 % 
 ref_point_hv = torch.tensor([0.0, 0.0, 0.0], dtype=torch.double)
-hv_tol = 0.0001
+hv_tol = 0.00005
 hv_window = 200
 
 #Criterium 2:
@@ -159,7 +151,7 @@ while it < max_bo:
     train_y = torch.tensor(Y, dtype=torch.double)
 
     #warping the conversion constraint to ensure that the GP model can handle the constraint properly
-    g_warped = -torch.log(1 - train_y[:, 3])
+    g_warped = -torch.log(torch.clamp(1 - train_y[:, 3], min=1e-12))
     train_y = torch.cat([train_y[:, :3], g_warped.unsqueeze(-1)], dim=-1)
 
     train_y_objectives = train_y[:, :3]    #STY, TON_E, TON_COF
@@ -173,7 +165,7 @@ while it < max_bo:
     model = SingleTaskGP(
         train_x,
         train_y,
-        input_transform=Normalize(d=4, bounds=bounds),
+        input_transform=Normalize(d=d, bounds=bounds),
         outcome_transform=Standardize(m=4),
     )
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
@@ -274,14 +266,14 @@ while it < max_bo:
             print(
                 "Stopping criterion reached."
             )
-            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "batch_pareto_0407_cpugpu_checkpoint.xlsx")
+            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "batch_LeuDH_paretofront_1108.xlsx")
             save_state(X, Y, hv_history, t_iter, reactor, it + 1)
             break
 
     checkpoint_interval = 5   #save every __ iterations
 
     if (it + 1) % checkpoint_interval == 0:
-        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "batch_pareto_0407_cpugpu_checkpoint.xlsx")
+        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "batch_LeuDH_paretofront_1108.xlsx")
         save_state(X, Y, hv_history, t_iter, reactor, it + 1)
 
 

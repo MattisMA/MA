@@ -6,20 +6,26 @@ from enzyme_kinetics_GluDH import kinetics
 class BatchReactor:
     """Batch reactor simulation: material balances + reaction simulation."""
 
+    #optimized vector x = [v_PPO0, v_NAD0, v_GluDH, v_FDH]
+    v_names = ["PPO [ml/ml]", "NAD [ml/nl]", "E_GluDH [ml/ml]", "E_FDH [ml/ml]"]
+    LOWER = np.array([0.0001, 0.0005, 0.0001, 0.0001])
+    UPPER = np.array([0.95, 0.05, 0.20, 0.20])
+
     def __init__(self):
         self.params = {
             #Stock solutions [mM|U/mL]
-            "c_PPOS":    2000,
+            "c_PPOS":    1000,
             "c_AFS":     20000,
             "c_NADHS":   20,
             "c_NADS":    20,
             "c_GluDHS":  180,
             "c_FDHS":  70.5,
 
-            "X_PPO_target": 0.999,         #target conversion
+            "X_target": 0.999,         #target conversion
             "T_max": 1200.0,               #max reaction time [min]
         }
         self.ppo_final_history = []
+        self.weights = np.array([1+self.params["c_PPOS"]/self.params["c_AFS"], 1.0, 1.0, 1.0]) #weights for optimized vector to acount for AF volume
 
     #Material balances==============================================================================================================================================================
     def balances(self, t, y):
@@ -60,7 +66,7 @@ class BatchReactor:
 
         #event: target conversion is reached
         def event_X99(t, y):
-            return y[0] - y0[0] * (1 - p["X_PPO_target"])
+            return y[0] - y0[0] * (1 - p["X_target"])
         event_X99.terminal = False
         event_X99.direction = -1
 
