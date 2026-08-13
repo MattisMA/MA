@@ -3,7 +3,7 @@ from scipy.integrate import solve_ivp
 from enzyme_kinetics_GluDH import kinetics
 
 
-class BatchReactor:
+class Reactor:
     """Batch reactor simulation: material balances + reaction simulation."""
 
     #optimized vector x = [v_PPO0, v_NAD0, v_GluDH, v_FDH]

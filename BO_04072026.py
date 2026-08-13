@@ -18,7 +18,7 @@ from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 from botorch.utils.multi_objective.hypervolume import infer_reference_point
 from botorch import gen_candidates_torch
-from batch_reactor_LeuDH import BatchReactor
+from cstr1_reactor import Reactor
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -26,7 +26,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #=================================================================================================================================================================
 #Reactor Simulation
 #=================================================================================================================================================================
-reactor = BatchReactor()
+reactor = Reactor()
 params = reactor.params
 
 #=======================================================================================================================================
@@ -65,7 +65,7 @@ def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
         df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
 
 #State of the loop ssaving==========================================================================================================================
-STATE_FILE = "batch_LeuDH_paretofront_1108.npz"
+STATE_FILE = "cstr1_GluDH_paretofront_1308.npz"
 
 def save_state(X, Y, hv_history, t_iter, reactor, it, filename=STATE_FILE, max_retries=5, retry_delay=1.0):
     base, ext = os.path.splitext(filename)
@@ -196,7 +196,7 @@ while it < max_bo:
     n_pareto = int(pareto_mask_full.sum())
 
     #hypervolume calculation
-    ref_point_acq = infer_reference_point(pareto_Y_obj).to(device)
+    ref_point_acq = torch.tensor([-10.0, -10.0, -10.0], dtype=torch.double, device=device)
     hv = Hypervolume(ref_point_hv)
     current_hv = hv.compute(pareto_Y_obj)                                       #current hypervolume of pareto points
     hv_history.append(float(current_hv))                                        #history for stopping criterium 1
@@ -266,14 +266,14 @@ while it < max_bo:
             print(
                 "Stopping criterion reached."
             )
-            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "batch_LeuDH_paretofront_1108.xlsx")
+            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "cstr1_GluDH_paretofront_1308.xlsx")
             save_state(X, Y, hv_history, t_iter, reactor, it + 1)
             break
 
     checkpoint_interval = 5   #save every __ iterations
 
     if (it + 1) % checkpoint_interval == 0:
-        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "batch_LeuDH_paretofront_1108.xlsx")
+        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "cstr1_GluDH_paretofront_1308.xlsx")
         save_state(X, Y, hv_history, t_iter, reactor, it + 1)
 
 
