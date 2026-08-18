@@ -18,8 +18,8 @@ class Reactor:
             "c_AFS":     8000,
             "c_NADHS":   20,
             "c_NADS":    20,
-            "c_GluDHS":  180,
-            "c_FDHS":  70.5,
+            "c_GluDHS":  100,
+            "c_FDHS":  100,
 
             "X_target": 0.999,         #target conversion
             "T_max": 1200.0,               #max reaction time [min]

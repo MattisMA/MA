@@ -9,6 +9,7 @@ from gpytorch.mlls.sum_marginal_log_likelihood import ExactMarginalLogLikelihood
 from botorch.utils.multi_objective.pareto import is_non_dominated
 from botorch.optim import optimize_acqf
 from botorch.utils.multi_objective.hypervolume import Hypervolume
+from botorch.acquisition import AcquisitionFunction
 from botorch.acquisition.multi_objective.logei import qLogExpectedHypervolumeImprovement
 from botorch.utils.multi_objective.box_decompositions.non_dominated import FastNondominatedPartitioning
 from botorch.acquisition.multi_objective.objective import IdentityMCMultiOutputObjective
@@ -18,7 +19,7 @@ from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 from botorch.utils.multi_objective.hypervolume import infer_reference_point
 from botorch import gen_candidates_torch
-from batch_reactor_LeuDH import Reactor
+from batch_reactor_GluDH import Reactor
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -65,7 +66,7 @@ def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
         df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
 
 #State of the loop ssaving==========================================================================================================================
-STATE_FILE = "Batch_LeuDH_paretofront_1808.npz"
+STATE_FILE = "Batch_GluDH_paretofront_1808(4).npz"
 
 def save_state(X, Y, hv_history, t_iter, reactor, it, filename=STATE_FILE, max_retries=5, retry_delay=1.0):
     base, ext = os.path.splitext(filename)
@@ -93,10 +94,46 @@ w =np.asarray(reactor.weights, dtype=float) #weighting of initial volumes to acc
 N_INIT = 100                   #number of initial evaluations
 d = len(LOWER)                 #dimensions of parameter domain
 
-bounds = torch.stack([torch.tensor(LOWER, dtype=torch.double), torch.tensor(UPPER, dtype=torch.double),])   #boundaries for sampling
+bounds_real = torch.stack([torch.tensor(LOWER, dtype=torch.double), torch.tensor(UPPER, dtype=torch.double),])   #boundaries for sampling
 
 vol_idx = np.nonzero(w)[0]
 inequality_constraints = [(torch.tensor(vol_idx, dtype=torch.long),-torch.tensor(w[vol_idx], dtype=torch.double),-1.0)]
+
+V_max = 1.0
+V_max_safe = V_max - 1e-6
+
+w_torch = torch.tensor(w, dtype=torch.double, device=device)
+lower_torch = torch.tensor(LOWER, dtype=torch.double, device=device)
+
+def project_log10(Z):
+    L, wt = lower_torch.to(Z), w_torch.to(Z)
+    diff = torch.pow(10.0, Z) - L
+    slack = V_max_safe - (wt * L).sum()
+    denom = (wt * diff).sum(dim=-1, keepdim=True).clamp_min(1e-30)
+    t = (slack / denom).clamp(max=1.0)
+    return torch.log10(L + t * diff)
+
+class VolumeProjectedAcqf(AcquisitionFunction):
+    def __init__(self, acq_function):
+        super().__init__(model=acq_function.model)
+        self.acq_function = acq_function
+    def forward(self, X):
+        return self.acq_function(project_log10(X))
+    
+NUM_RESTARTS, RAW_SAMPLES, IC_POOL_SIZE = 10, 512, 4096
+
+ic_pool = torch.log10(get_polytope_samples(
+    n=IC_POOL_SIZE, bounds=bounds_real,
+    inequality_constraints=inequality_constraints,
+    n_burnin=10000, n_thinning=32,
+)).to(device)
+
+def make_batch_initial_conditions(acqf, num_restarts=NUM_RESTARTS, raw_samples=RAW_SAMPLES):
+    idx = torch.randperm(ic_pool.shape[0], device=device)[:raw_samples]
+    Z = ic_pool[idx].unsqueeze(1)
+    with torch.no_grad():
+        vals = torch.cat([acqf(Z[i:i + 128]) for i in range(0, Z.shape[0], 128)])
+    return Z[vals.topk(min(num_restarts, Z.shape[0])).indices]
 
 
 if os.path.exists(STATE_FILE):
@@ -111,7 +148,7 @@ if os.path.exists(STATE_FILE):
 else:
     X_real = get_polytope_samples(
         n=N_INIT,
-        bounds=bounds,
+        bounds=bounds_real,
         inequality_constraints=inequality_constraints,
         n_burnin=10000,
         n_thinning=32,
@@ -226,15 +263,19 @@ while it < max_bo:
 
     torch.cuda.synchronize()
     taf = time.perf_counter()
+    qehvi_proj = VolumeProjectedAcqf(qehvi)
+    batch_ics  = make_batch_initial_conditions(qehvi_proj)
     candidate, _ = optimize_acqf(
-        acq_function=qehvi,
-        bounds=bounds_gpu,      #parameter boundaries
-        q=1,                #number of points suggested by the acquisition function
-        num_restarts=10,    #number of optimization starting points
-        raw_samples=512,    #number of evaluations of the acquisition function to choose num_restarts from
+        acq_function=qehvi_proj,
+        bounds=bounds_gpu,
+        q=1,
+        num_restarts=NUM_RESTARTS,
+        batch_initial_conditions=batch_ics,
         gen_candidates=gen_candidates_torch,
-        options={"maxiter": 200},
+        options={"stopping_criterion_options": {"maxiter": 200}},
     )
+    candidate = project_log10(candidate)
+
     torch.cuda.synchronize()
     print(f"Time AF optimization: {time.perf_counter() - taf}s")
 
@@ -266,14 +307,14 @@ while it < max_bo:
             print(
                 "Stopping criterion reached."
             )
-            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_LeuDH_paretofront_1808.xlsx")
+            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_GluDH_paretofront_1808(4).xlsx")
             save_state(X, Y, hv_history, t_iter, reactor, it + 1)
             break
 
     checkpoint_interval = 5   #save every __ iterations
 
     if (it + 1) % checkpoint_interval == 0:
-        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_LeuDH_paretofront_1808.xlsx")
+        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_GluDH_paretofront_1808(4).xlsx")
         save_state(X, Y, hv_history, t_iter, reactor, it + 1)
 
 
