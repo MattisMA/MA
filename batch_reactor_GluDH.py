@@ -15,7 +15,7 @@ class Reactor:
         self.params = {
             #Stock solutions [mM|U/mL]
             "c_PPOS":    1000,
-            "c_AFS":     20000,
+            "c_AFS":     8000,
             "c_NADHS":   20,
             "c_NADS":    20,
             "c_GluDHS":  180,

@@ -18,7 +18,7 @@ from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 from botorch.utils.multi_objective.hypervolume import infer_reference_point
 from botorch import gen_candidates_torch
-from cstr1_reactor import Reactor
+from batch_reactor_LeuDH import Reactor
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -65,7 +65,7 @@ def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
         df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
 
 #State of the loop ssaving==========================================================================================================================
-STATE_FILE = "cstr1_GluDH_paretofront_1308.npz"
+STATE_FILE = "Batch_LeuDH_paretofront_1808.npz"
 
 def save_state(X, Y, hv_history, t_iter, reactor, it, filename=STATE_FILE, max_retries=5, retry_delay=1.0):
     base, ext = os.path.splitext(filename)
@@ -90,7 +90,7 @@ UPPER = np.asarray(reactor.UPPER, dtype=float)
 w =np.asarray(reactor.weights, dtype=float) #weighting of initial volumes to account for the volume of AF stock solution
 
 #Initial design or start with old data==========================================================================================================================
-N_INIT = 50                   #number of initial evaluations
+N_INIT = 100                   #number of initial evaluations
 d = len(LOWER)                 #dimensions of parameter domain
 
 bounds = torch.stack([torch.tensor(LOWER, dtype=torch.double), torch.tensor(UPPER, dtype=torch.double),])   #boundaries for sampling
@@ -130,7 +130,7 @@ X_TARGET_WARPED = -np.log(1 - params["X_target"])   #fixed warped conversion con
 #if the hypervolume for hv_window iterations doesnt improve by at least hv_tol*100 % 
 ref_point_hv = torch.tensor([0.0, 0.0, 0.0], dtype=torch.double)
 hv_tol = 0.00005
-hv_window = 200
+hv_window = 400
 
 #Criterium 2:
 #if there are min_pareto_points points on the determined pareto frontier
@@ -196,7 +196,7 @@ while it < max_bo:
     n_pareto = int(pareto_mask_full.sum())
 
     #hypervolume calculation
-    ref_point_acq = torch.tensor([-10.0, -10.0, -10.0], dtype=torch.double, device=device)
+    ref_point_acq = infer_reference_point(pareto_Y_obj).to(device)
     hv = Hypervolume(ref_point_hv)
     current_hv = hv.compute(pareto_Y_obj)                                       #current hypervolume of pareto points
     hv_history.append(float(current_hv))                                        #history for stopping criterium 1
@@ -266,14 +266,14 @@ while it < max_bo:
             print(
                 "Stopping criterion reached."
             )
-            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "cstr1_GluDH_paretofront_1308.xlsx")
+            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_LeuDH_paretofront_1808.xlsx")
             save_state(X, Y, hv_history, t_iter, reactor, it + 1)
             break
 
     checkpoint_interval = 5   #save every __ iterations
 
     if (it + 1) % checkpoint_interval == 0:
-        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "cstr1_GluDH_paretofront_1308.xlsx")
+        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_LeuDH_paretofront_1808.xlsx")
         save_state(X, Y, hv_history, t_iter, reactor, it + 1)
 
 

@@ -15,11 +15,11 @@ class Reactor:
         self.params = {
             #Stock solutions [mM|U/mL]
             "c_TMPS":    1000,
-            "c_ForS":     20000,
+            "c_ForS":     8000,
             "c_NADHS":   20,
             "c_NADS":    20,
-            "c_LeuDHS":  68.493,
-            "c_FDHS":  48.0,
+            "c_LeuDHS":  82.0,
+            "c_FDHS":  43.0,
 
             "X_target": 0.999,         #target conversion
             "T_max": 1200.0,               #max reaction time [min]
