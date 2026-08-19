@@ -7,9 +7,9 @@ class Reactor:
     """Batch reactor simulation: material balances + reaction simulation."""
 
     #optimized vector x = [v_PPO0, v_NAD0, v_GluDH, v_FDH]
-    v_names = ["PPO [ml/ml]", "NAD [ml/nl]", "E_GluDH [ml/ml]", "E_FDH [ml/ml]"]
-    LOWER = np.array([0.0001, 0.0005, 0.0001, 0.0001])
-    UPPER = np.array([0.95, 0.05, 0.20, 0.20])
+    v_names = ["PPO [ml/ml]", "NAD [ml/nl]", "E_GluDH [ml/ml]", "E_FDH [ml/ml]", "buffer"]
+    LOWER = np.array([0.0001, 0.0005, 0.0001, 0.0001, 0.000001])
+    UPPER = np.array([0.95, 0.05, 0.20, 0.20, 0.20])
 
     def __init__(self):
         self.params = {
@@ -25,7 +25,7 @@ class Reactor:
             "T_max": 1200.0,               #max reaction time [min]
         }
         self.ppo_final_history = []
-        self.weights = np.array([1+self.params["c_PPOS"]/self.params["c_AFS"], 1.0, 1.0, 1.0]) #weights for optimized vector to acount for AF volume
+        self.weights = np.array([1+self.params["c_PPOS"]/self.params["c_AFS"], 1.0, 1.0, 1.0, 1.0]) #weights for optimized vector to acount for AF volume
 
     #Material balances==============================================================================================================================================================
     def balances(self, t, y):
