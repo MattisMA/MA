@@ -66,7 +66,7 @@ def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
         df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
 
 #State of the loop ssaving==========================================================================================================================
-STATE_FILE = "Batch_GluDH_paretofront_1808(4).npz"
+STATE_FILE = "Batch_GluDH_paretofront_1908(2).npz"
 
 def save_state(X, Y, hv_history, t_iter, reactor, it, filename=STATE_FILE, max_retries=5, retry_delay=1.0):
     base, ext = os.path.splitext(filename)
@@ -100,7 +100,7 @@ vol_idx = np.nonzero(w)[0]
 inequality_constraints = [(torch.tensor(vol_idx, dtype=torch.long),-torch.tensor(w[vol_idx], dtype=torch.double),-1.0)]
 
 V_max = 1.0
-V_max_safe = V_max - 1e-6
+V_max_safe = V_max - 0.05
 
 w_torch = torch.tensor(w, dtype=torch.double, device=device)
 lower_torch = torch.tensor(LOWER, dtype=torch.double, device=device)
@@ -233,7 +233,7 @@ while it < max_bo:
     n_pareto = int(pareto_mask_full.sum())
 
     #hypervolume calculation
-    ref_point_acq = infer_reference_point(pareto_Y_obj).to(device)
+    ref_point_acq = ref_point_hv.to(device) #infer_reference_point(pareto_Y_obj).to(device)
     hv = Hypervolume(ref_point_hv)
     current_hv = hv.compute(pareto_Y_obj)                                       #current hypervolume of pareto points
     hv_history.append(float(current_hv))                                        #history for stopping criterium 1
@@ -307,14 +307,14 @@ while it < max_bo:
             print(
                 "Stopping criterion reached."
             )
-            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_GluDH_paretofront_1808(4).xlsx")
+            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_GluDH_paretofront_1908(2).xlsx")
             save_state(X, Y, hv_history, t_iter, reactor, it + 1)
             break
 
     checkpoint_interval = 5   #save every __ iterations
 
     if (it + 1) % checkpoint_interval == 0:
-        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_GluDH_paretofront_1808(4).xlsx")
+        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_GluDH_paretofront_1908(2).xlsx")
         save_state(X, Y, hv_history, t_iter, reactor, it + 1)
 
 

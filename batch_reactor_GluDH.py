@@ -7,9 +7,9 @@ class Reactor:
     """Batch reactor simulation: material balances + reaction simulation."""
 
     #optimized vector x = [v_PPO0, v_NAD0, v_GluDH, v_FDH]
-    v_names = ["PPO [ml/ml]", "NAD [ml/nl]", "E_GluDH [ml/ml]", "E_FDH [ml/ml]", "buffer"]
-    LOWER = np.array([0.0001, 0.0005, 0.0001, 0.0001, 0.000001])
-    UPPER = np.array([0.95, 0.05, 0.20, 0.20, 0.20])
+    v_names = ["PPO [ml/ml]", "NAD [ml/nl]", "E_GluDH [ml/ml]", "E_FDH [ml/ml]"]
+    LOWER = np.array([0.0001, 0.0005, 0.0001, 0.0001])
+    UPPER = np.array([0.95, 0.05, 0.20, 0.20])
 
     def __init__(self):
         self.params = {
