@@ -25,7 +25,7 @@ class Reactor:
             "T_max": 1200.0,               #max reaction time [min]
         }
         self.ppo_final_history = []
-        self.weights = np.array([1+self.params["c_PPOS"]/self.params["c_AFS"], 1.0, 1.0, 1.0, 1.0]) #weights for optimized vector to acount for AF volume
+        self.weights = np.array([1+self.params["c_PPOS"]/self.params["c_AFS"], 1.0, 1.0, 1.0]) #weights for optimized vector to acount for AF volume
 
     #Material balances==============================================================================================================================================================
     def balances(self, t, y):
