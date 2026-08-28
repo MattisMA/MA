@@ -66,7 +66,7 @@ def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
         df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
 
 #State of the loop ssaving==========================================================================================================================
-STATE_FILE = "Batch_LeuDH_paretofront_2008.npz"
+STATE_FILE = "Batch_GluDH_paretofront_2808.npz"
 
 def save_state(X, Y, hv_history, t_iter, reactor, it, filename=STATE_FILE, max_retries=5, retry_delay=1.0):
     base, ext = os.path.splitext(filename)
@@ -307,14 +307,14 @@ while it < max_bo:
             print(
                 "Stopping criterion reached."
             )
-            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_LeuDH_paretofront_2008.xlsx")
+            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_GluDH_paretofront_2808.xlsx")
             save_state(X, Y, hv_history, t_iter, reactor, it + 1)
             break
 
     checkpoint_interval = 5   #save every __ iterations
 
     if (it + 1) % checkpoint_interval == 0:
-        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_LeuDH_paretofront_2008.xlsx")
+        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Batch_GluDH_paretofront_2808.xlsx")
         save_state(X, Y, hv_history, t_iter, reactor, it + 1)
 
 
