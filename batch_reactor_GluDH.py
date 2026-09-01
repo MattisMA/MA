@@ -1,10 +1,15 @@
 import numpy as np
 from scipy.integrate import solve_ivp
-from enzyme_kinetics_GluDH_2 import kinetics, kinetic_params
+from enzyme_kinetics_GluDH import kinetics, kinetic_params
 
 
-class BatchReactor:
+class Reactor:
     """Batch reactor simulation: material balances + reaction simulation."""
+
+    #optimized vector x = [v_PPO0, v_NAD0, v_GluDH, v_FDH]
+    v_names = ["PPO [ml/ml]", "NAD [ml/nl]", "E_GluDH [ml/ml]", "E_FDH [ml/ml]"]
+    LOWER = np.array([0.0001, 0.0005, 0.0001, 0.0001])
+    UPPER = np.array([0.95, 0.05, 0.20, 0.20])
 
     def __init__(self):
         self.params = {
@@ -16,10 +21,11 @@ class BatchReactor:
             "c_GluDHS":  170,
             "c_FDHS":  110,
 
-            "X_PPO_target": 0.999,         #target conversion
+            "X_target": 0.999,         #target conversion
+            "T_max": 1200.0,               #max reaction time [min]
         }
         self.ppo_final_history = []
-
+        self.weights = np.array([1+self.params["c_PPOS"]/self.params["c_AFS"], 1.0, 1.0, 1.0]) #weights for optimized vector to acount for AF volume
     #Material balances==============================================================================================================================================================
     def balances(self, t, y):
         r1, r2, r3, r4, r5, r6, r7 = kinetics(y)
@@ -67,23 +73,29 @@ class BatchReactor:
         def event_X99(t, y):
             ppo = y[0] + y[1]
             return ppo - c_PPO_usable * (1 - p["X_PPO_target"])
-        event_X99.terminal = True
+        event_X99.terminal = False
         event_X99.direction = -1
 
         sol = solve_ivp(
             fun=self.balances,
-            t_span=(0.0, 1e6),
+            t_span=(0.0, p["T_max"]),
             y0=y0,
             method="BDF",
             events=event_X99,
+            dense_output=True,
             rtol=1e-8,
             atol=1e-10,
         )
 
-        #solving for reaction time and final PPO and PPT concentrations
-        tf = sol.t[-1]
-        PPO = sol.y[0, -1] + sol.y[1, -1]
-        PPT = sol.y[3, -1]
+        #solving for reaction time and PPO and PPT concentrations concentrations when X_target is reached
+        hit = sol.t_events[0].size > 0
+        tf  = float(sol.t_events[0][0]) if hit else sol.t[-1]
+        y_f = sol.sol(tf) if hit else sol.y[:, -1]     #objective values, when target x is reached
+        PPO = y_f[0] + y_f[1]
+        PPT = y_f[3]
+
+        #final PPO concentration after T_max
+        PPO_final = sol.y[0, -1] + sol.y[1, -1]
 
         self.ppo_final_history.append(PPO)
 
@@ -93,6 +105,6 @@ class BatchReactor:
         ton_cof = PPT / (c_NADH0 + c_NAD0)
 
         #for constraint
-        X_PPO = 1.0 - PPO / c_PPO_usable
+        X_PPO = 1.0 - PPO_final / c_PPO_usable
 
         return np.array([sty, ton_e, ton_cof, X_PPO])
