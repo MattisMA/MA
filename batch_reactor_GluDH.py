@@ -8,7 +8,7 @@ class Reactor:
 
     #optimized vector x = [v_PPO0, v_NAD0, v_GluDH, v_FDH]
     v_names = ["PPO [ml/ml]", "NAD [ml/nl]", "E_GluDH [ml/ml]", "E_FDH [ml/ml]"]
-    LOWER = np.array([0.0001, 0.0005, 0.0001, 0.0001])
+    LOWER = np.array([0.1, 0.0005, 0.001, 0.001])
     UPPER = np.array([0.95, 0.05, 0.20, 0.20])
 
     def __init__(self):
@@ -18,14 +18,14 @@ class Reactor:
             "c_AFS":     8000,
             "c_NADHS":   20,
             "c_NADS":    20,
-            "c_GluDHS":  170,
-            "c_FDHS":  110,
+            "c_GluDHS":  100,
+            "c_FDHS":  100,
 
-            "X_target": 0.999,         #target conversion
+            "X_target": 0.999,             #target conversion
             "T_max": 1200.0,               #max reaction time [min]
         }
         self.ppo_final_history = []
-        self.weights = np.array([1+self.params["c_PPOS"]/self.params["c_AFS"], 1.0, 1.0, 1.0]) #weights for optimized vector to acount for AF volume
+        self.weights = np.array([1+self.params["c_PPOS"]*(1-kinetic_params["f_inert"])/self.params["c_AFS"], 1.0, 1.0, 1.0]) #weights for optimized vector to acount for AF volume
     #Material balances==============================================================================================================================================================
     def balances(self, t, y):
         r1, r2, r3, r4, r5, r6, r7 = kinetics(y)
@@ -56,7 +56,7 @@ class Reactor:
         P_akt0 = kinetic_params["f_Pakt0"] * c_PPO_usable
         P_slow0 = c_PPO_usable - P_akt0
         c_PPT0 = 0.0
-        c_AF0 = c_PPO0
+        c_AF0 = c_PPO_usable
         c_NADH0 = 0.0
         c_NAD0 = v_NAD0 * p["c_NADS"]
         GluDH = v_GluDH * p["c_GluDHS"]
@@ -64,15 +64,10 @@ class Reactor:
 
         y0 = [P_akt0, P_slow0, c_PPO_inert, c_PPT0, c_NADH0, c_NAD0, c_AF0, GluDH, FDH]
 
-        #Punishment if total volume is unrealistic
-        if (v_PPO0+(p["c_PPOS"]/p["c_AFS"])*v_PPO0+v_NAD0+v_GluDH+v_FDH) > 1.0:
-            self.ppo_final_history.append(np.nan)
-            return np.array([0, 0, 0, 0])
-
         #event: target conversion is reached
         def event_X99(t, y):
             ppo = y[0] + y[1]
-            return ppo - c_PPO_usable * (1 - p["X_PPO_target"])
+            return ppo - c_PPO_usable * (1 - p["X_target"])
         event_X99.terminal = False
         event_X99.direction = -1
 

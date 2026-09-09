@@ -59,11 +59,6 @@ class Reactor:
 
         y0 = [c_TMP0, c_TLeu0, c_NADH0, c_NAD0, c_For0, LeuDH, FDH]
 
-        #Punishment if total volume is unrealistic
-        if (v_TMP0+(p["c_TMPS"]/p["c_ForS"])*v_TMP0+v_NAD0+v_LeuDH+v_FDH) > 1.0:
-            self.ppo_final_history.append(np.nan)
-            return np.array([0, 0, 0, 0])
-
         #event: target conversion is reached
         def event_X99(t, y):
             return y[0] - y0[0] * (1 - p["X_target"])
