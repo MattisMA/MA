@@ -56,7 +56,7 @@ class Reactor:
         P_akt0 = kinetic_params["f_Pakt0"] * c_PPO_usable
         P_slow0 = c_PPO_usable - P_akt0
         c_PPT0 = 0.0
-        c_AF0 = c_PPO_usable
+        c_AF0 = c_PPO0
         c_NADH0 = 0.0
         c_NAD0 = v_NAD0 * p["c_NADS"]
         GluDH = v_GluDH * p["c_GluDHS"]
