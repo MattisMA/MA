@@ -19,7 +19,7 @@ from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 from botorch.utils.multi_objective.hypervolume import infer_reference_point
 from botorch import gen_candidates_torch
-from fedbatch_reactor1 import Reactor
+from batch_reactor_GluDH_old import Reactor
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -29,7 +29,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #=================================================================================================================================================================
 reactor = Reactor()
 params = reactor.params
-
+name = "Batch_GluDH_paretofront_old"
 #=======================================================================================================================================
 #Optimization
 #=======================================================================================================================================
@@ -67,7 +67,7 @@ def save_checkpoint(X, Y, hv_history, t_iter, reactor, params, filename):
         df_hv.to_excel(writer, sheet_name="Hypervolume", index=False)
 
 #State of the loop saving as npz
-STATE_FILE = "Fedbatch_GluDH_paretofront_0909.npz"
+STATE_FILE = f"{name}.npz"
 
 def save_state(X, Y, hv_history, t_iter, reactor, it, filename=STATE_FILE, max_retries=5, retry_delay=1.0):
     base, ext = os.path.splitext(filename)
@@ -283,14 +283,14 @@ while it < max_bo:
             print(
                 "Stopping criterion reached."
             )
-            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Fedbatch_GluDH_paretofront_0909.xlsx")
+            save_checkpoint(X, Y, hv_history, t_iter, reactor, params, f"{name}.xlsx")
             save_state(X, Y, hv_history, t_iter, reactor, it + 1)
             break
 
     checkpoint_interval = 5   #save every __ iterations
 
     if (it + 1) % checkpoint_interval == 0:
-        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, "Fedbatch_GluDH_paretofront_0909.xlsx")
+        save_checkpoint(X, Y, hv_history, t_iter, reactor, params, f"{name}.xlsx")
         save_state(X, Y, hv_history, t_iter, reactor, it + 1)
 
 
