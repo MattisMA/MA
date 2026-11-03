@@ -19,7 +19,7 @@ from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 from botorch.utils.multi_objective.hypervolume import infer_reference_point
 from botorch import gen_candidates_torch
-from batch_reactor_GluDH_old import Reactor
+from batch_reactor_GluDH import Reactor
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -29,7 +29,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #=================================================================================================================================================================
 reactor = Reactor()
 params = reactor.params
-name = "Batch_GluDH_paretofront_old"
+name = "Batch_GluDH_paretofront_1210"
 #=======================================================================================================================================
 #Optimization
 #=======================================================================================================================================
@@ -92,7 +92,7 @@ UPPER = np.asarray(reactor.UPPER, dtype=float)
 w =np.asarray(reactor.weights, dtype=float) #weighting of initial volumes to account for the volume of AF stock solution
 
 #Initial design or start with old data==========================================================================================================================
-N_INIT = 100                   #number of initial evaluations
+N_INIT = 50                   #number of initial evaluations
 d = len(LOWER)                 #dimensions of parameter domain
 bounds_log = np.array([np.log10(LOWER), np.log10(UPPER)])
 V_max = 1.0
@@ -144,7 +144,7 @@ X_TARGET_WARPED = -np.log(1 - params["X_target"])   #fixed warped conversion con
 #if the hypervolume for hv_window iterations doesnt improve by at least hv_tol*100 % 
 ref_point_hv = torch.tensor([0.0, 0.0, 0.0], dtype=torch.double)
 hv_tol = 0.00005
-hv_window = 400
+hv_window = 200
 
 #Criterium 2:
 #if there are min_pareto_points points on the determined pareto frontier
