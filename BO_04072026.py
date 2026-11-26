@@ -108,14 +108,14 @@ def project_log10(Z):
     denom = (wt * diff).sum(dim=-1, keepdim=True).clamp_min(1e-30)
     t = (slack / denom).clamp(max=1.0)
     t_vec = torch.where(wt > 0, t, torch.ones_like(t))  #if wi=0 (no starting volume contribution), no downscaling
-    return torch.log10(L + t * diff)
+    return torch.log10(L + t_vec * diff)
 
-class VolumeProjectedAcqf(AcquisitionFunction):
+class VolumectedAcqf(AcquisitionFunction):
     def __init__(self, acq_function):
         super().__init__(model=acq_function.model)
         self.acq_function = acq_function
     def forward(self, X):
-        return self.acq_function(project_log10(X))
+        return self.acq_function(ct_log10(X))
     
 
 if os.path.exists(STATE_FILE):
@@ -129,7 +129,7 @@ if os.path.exists(STATE_FILE):
     print(f"Resuming from checkpoint at iteration {it}")
 else:
     lhs = qmc.scale(qmc.LatinHypercube(d=d, scramble=True, seed=1).random(N_INIT), LOWER, UPPER)
-    X = project_log10(torch.tensor(np.log10(lhs), dtype=torch.double)).numpy()
+    X = ct_log10(torch.tensor(np.log10(lhs), dtype=torch.double)).numpy()
     X_real = 10.0**X
     Y = np.array([reactor.simulate(row) for row in X_real])
 
@@ -243,7 +243,7 @@ while it < max_bo:
     if device.type == "cuda":
         torch.cuda.synchronize()
     taf = time.perf_counter()
-    qehvi_proj = VolumeProjectedAcqf(qehvi)
+    qehvi_proj = VolumectedAcqf(qehvi)
     candidate, _ = optimize_acqf(
         acq_function=qehvi_proj,
         bounds=bounds_gpu,
@@ -253,7 +253,7 @@ while it < max_bo:
         gen_candidates=gen_candidates_torch,
         options={"stopping_criterion_options": {"maxiter": 200}},
     )
-    candidate = project_log10(candidate)
+    candidate = ct_log10(candidate)
 
     if device.type == "cuda":
         torch.cuda.synchronize()
