@@ -157,7 +157,8 @@ max_bo = 5000
 #Bayesian Optimization loop=====================================================================================================================================================
 prev_state = None
 while it < max_bo:
-    torch.cuda.synchronize()
+    if device.type == "cuda":
+        torch.cuda.synchronize()
     t0 = time.perf_counter()
 
     #training data
@@ -238,7 +239,8 @@ while it < max_bo:
     )
     print(f"Time qEHVI construction: {time.perf_counter() - tehvi}s")
 
-    torch.cuda.synchronize()
+    if device.type == "cuda":
+        torch.cuda.synchronize()
     taf = time.perf_counter()
     qehvi_proj = VolumeProjectedAcqf(qehvi)
     candidate, _ = optimize_acqf(
@@ -252,7 +254,8 @@ while it < max_bo:
     )
     candidate = project_log10(candidate)
 
-    torch.cuda.synchronize()
+    if device.type == "cuda":
+        torch.cuda.synchronize()
     print(f"Time AF optimization: {time.perf_counter() - taf}s")
 
     candidates = candidate.detach().cpu().numpy()
@@ -263,7 +266,8 @@ while it < max_bo:
         X = np.vstack([X, x_new])
         Y = np.vstack([Y, y_new])
 
-    torch.cuda.synchronize()
+    if device.type == "cuda":
+        torch.cuda.synchronize()
     t_iter.append(time.perf_counter() - t0)
 
     #Termination criteria---------------------------------------------------------------------------------------------------------------------------------------
