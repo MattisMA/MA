@@ -107,6 +107,7 @@ def project_log10(Z):
     slack = V_max_safe - (wt * L).sum()
     denom = (wt * diff).sum(dim=-1, keepdim=True).clamp_min(1e-30)
     t = (slack / denom).clamp(max=1.0)
+    t_vec = torch.where(wt > 0, t, torch.ones_like(t))  #if wi=0 (no starting volume contribution), no downscaling
     return torch.log10(L + t * diff)
 
 class VolumeProjectedAcqf(AcquisitionFunction):
